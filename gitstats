@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # Copyright (c) 2007-2014 Heikki Hokkanen <hoxu@users.sf.net> & others (see doc/AUTHOR)
-# Contributor: Luciano Bustos <luciano.bustos@me>
 # GPLv2 / GPLv3
 
 from __future__ import print_function
@@ -63,8 +62,8 @@ conf = {
 	'project_name': '',
 	'processes': 8,
 	'start_date': '',
-	'inc_url': 'tickets/?id=%s',
-	'req_url': 'tickets/?id=%s',
+	'inc_url': 'tickets?id=%s',
+	'req_url': 'tickets?id=%s',
 }
 
 def getpipeoutput(cmds, quiet = False):
@@ -149,6 +148,9 @@ def getnumoflinesinblob(ext_blob):
 	"""
 	ext, blob_id = ext_blob
 	return (ext, blob_id, int(getpipeoutput(['git cat-file blob %s' % blob_id, 'wc -l']).split()[0]))
+
+def buildlink(item):
+    return '<li><a href="%s.html">%s</a></li>\n' % (item.lower(), TITLES[item])
 
 class DataCollector:
 	"""Manages data collection from a revision control repository."""
@@ -1205,7 +1207,7 @@ class HTMLReportCreator(ReportCreator):
 		f.write('<table class="incidents">')
 		f.write('<tr><th>Incidents</th></tr>')
 		for inc in data.incidents:
-			f.write('<tr><td><a href="https://eti.spiraservice.net/51/Incident/%s.aspx">IN:%s</a></td></tr>' % (inc, inc))
+			f.write('<tr><td><a href="'+conf['inc_url']+'">IN:%s</a></td></tr>' % (inc, inc))
 		f.write('</table>')
 		f.write('</body></html>')
 		f.close()
@@ -1225,7 +1227,7 @@ class HTMLReportCreator(ReportCreator):
 		f.write('<table class="requirements">')
 		f.write('<tr><th>Requirements</th></tr>')
 		for req in data.requirements:
-			f.write('<tr><td><a href="https://eti.spiraservice.net/51/Requirement/%s.aspx">RQ:%s</a></td></tr>' % (req, req))
+			f.write('<tr><td><a href="'+conf['req_url']+'">RQ:%s</a></td></tr>' % (req, req))
 		f.write('</table>')
 		f.write('</body></html>')
 		f.close()
@@ -1452,20 +1454,7 @@ plot """
 """ % (self.title, conf['style'], getversion()))
 
 	def printNav(self, f):
-		f.write("""
-<div class="nav">
-<ul>
-<li><a href="index.html">'+TITLES['GENERAL']+'</a></li>
-<li><a href="activity.html">'+TITLES['ACTIVITY']+'</a></li>
-<li><a href="authors.html">'+TITLES['AUTHORS']+'</a></li>
-<li><a href="files.html">'+TITLES['FILES']+'</a></li>
-<li><a href="lines.html">'+TITLES['LINES']+'</a></li>
-<li><a href="tags.html">'+TITLES['TAGS']+'</a></li>
-<li><a href="incidents.html">'+TITLES['INCIDENTS']+'</a></li>
-<li><a href="requirements.html">'+TITLES['REQUIREMENTS']+'</a></li>
-</ul>
-</div>
-""")
+		f.write('<div class="nav"><ul>%s</ul></div>'  % (''.join(map(buildlink, TITLES.keys()))))
 		
 def usage():
 	print("""
