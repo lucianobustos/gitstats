@@ -7,4 +7,6 @@ git history statistics generator + few enhancements
 
 Also externalize titles names.
 
+## Preview
 
+![Navigation preview](gitstatsrpev.png)
