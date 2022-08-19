@@ -29,6 +29,17 @@ GNUPLOT_COMMON = 'set terminal png transparent size 640,240\nset size 1.0,1.0\n'
 ON_LINUX = (platform.system() == 'Linux')
 WEEKDAYS = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 
+TITLES = {
+	'GENERAL': '📋 General',
+	'ACTIVITY': '🕒 Activity',
+	'AUTHORS': '🧑‍💻 Authors',
+	'FILES': '📄 Files',
+	'LINES': '📄 Lines',
+	'TAGS': '📦 Tags',
+	'INCIDENTS': '🔥 Incidents',
+	'REQUIREMENTS': '📝 Requirements',
+}
+
 exectime_internal = 0.0
 exectime_external = 0.0
 time_start = time.time()
@@ -50,7 +61,9 @@ conf = {
 	'linear_linestats': 1,
 	'project_name': '',
 	'processes': 8,
-	'start_date': ''
+	'start_date': '',
+	'inc_url': 'tickets?id=%s',
+	'req_url': 'tickets?id=%s',
 }
 
 def getpipeoutput(cmds, quiet = False):
@@ -136,12 +149,17 @@ def getnumoflinesinblob(ext_blob):
 	ext, blob_id = ext_blob
 	return (ext, blob_id, int(getpipeoutput(['git cat-file blob %s' % blob_id, 'wc -l']).split()[0]))
 
+def buildlink(item):
+    return '<li><a href="%s.html">%s</a></li>\n' % (item.lower(), TITLES[item])
+
 class DataCollector:
 	"""Manages data collection from a revision control repository."""
 	def __init__(self):
 		self.stamp_created = time.time()
 		self.cache = {}
 		self.total_authors = 0
+		self.incidents = 0
+		self.requirements = 0
 		self.activity_by_hour_of_day = {} # hour -> commits
 		self.activity_by_day_of_week = {} # day -> commits
 		self.activity_by_month_of_year = {} # month [1-12] -> commits
@@ -291,6 +309,9 @@ class GitDataCollector(DataCollector):
 
 		self.total_authors += int(getpipeoutput(['git shortlog -s %s' % getlogrange(), 'wc -l']))
 		#self.total_lines = int(getoutput('git-ls-files -z |xargs -0 cat |wc -l'))
+		# INCS git log | grep -Eo '(IN:([0-9]+))' | tr -d 'IN:' | sort | uniq
+		self.incidents = getpipeoutput(['git log', 'grep -Eo "(IN:([0-9]+))"', 'tr -d "IN:"', 'sort', 'uniq']).split('\n')
+		self.requirements = getpipeoutput(['git log', 'grep -Eo "(RQ:([0-9]+))"', 'tr -d "RQ:"', 'sort', 'uniq']).split('\n')
 
 		# tags
 		lines = getpipeoutput(['git show-ref --tags']).split('\n')
@@ -330,7 +351,7 @@ class GitDataCollector(DataCollector):
 
 		# Collect revision statistics
 		# Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
-		lines = getpipeoutput(['git rev-list --pretty=format:"%%at %%ai %%aN <%%aE>" %s' % getlogrange('HEAD'), 'grep -av ^commit']).split('\n')
+		lines = getpipeoutput(['git rev-list --pretty=format:"%%at %%ai %%aN <%%aE>" %s' % getlogrange('HEAD'), 'grep -v ^commit']).split('\n')
 		for line in lines:
 			parts = line.split(' ', 4)
 			author = ''
@@ -753,7 +774,7 @@ class HTMLReportCreator(ReportCreator):
 		format = '%Y-%m-%d %H:%M:%S'
 		self.printHeader(f)
 
-		f.write('<h1>GitStats - %s</h1>' % data.projectname)
+		f.write('<h1>GitStats - %s - %s</h1>' % (TITLES['GENERAL'] , data.projectname))
 
 		self.printNav(f)
 
@@ -766,6 +787,10 @@ class HTMLReportCreator(ReportCreator):
 		f.write('<dt>Total Files</dt><dd>%s</dd>' % data.getTotalFiles())
 		f.write('<dt>Total Lines of Code</dt><dd>%s (%d added, %d removed)</dd>' % (data.getTotalLOC(), data.total_lines_added, data.total_lines_removed))
 		f.write('<dt>Total Commits</dt><dd>%s (average %.1f commits per active day, %.1f per all days)</dd>' % (data.getTotalCommits(), float(data.getTotalCommits()) / len(data.getActiveDays()), float(data.getTotalCommits()) / data.getCommitDeltaDays()))
+		
+		f.write('<dt>Total Incidents</dt><dd>%s</dd>' % len(data.incidents))
+		f.write('<dt>Total Requirements</dt><dd>%s</dd>' % len(data.requirements))
+
 		f.write('<dt>Authors</dt><dd>%s (average %.1f commits per author)</dd>' % (data.getTotalAuthors(), (1.0 * data.getTotalCommits()) / data.getTotalAuthors()))
 		f.write('</dl>')
 
@@ -776,7 +801,7 @@ class HTMLReportCreator(ReportCreator):
 		# Activity
 		f = open(path + '/activity.html', 'w')
 		self.printHeader(f)
-		f.write('<h1>Activity</h1>')
+		f.write('<h1>%s - %s</h1>' % (TITLES['ACTIVITY'] , data.projectname))
 		self.printNav(f)
 
 		#f.write('<h2>Last 30 days</h2>')
@@ -958,8 +983,7 @@ class HTMLReportCreator(ReportCreator):
 		# Authors
 		f = open(path + '/authors.html', 'w')
 		self.printHeader(f)
-
-		f.write('<h1>Authors</h1>')
+		f.write('<h1>%s - %s</h1>' % (TITLES['AUTHORS'] , data.projectname))
 		self.printNav(f)
 
 		# Authors :: List of authors
@@ -1071,7 +1095,7 @@ class HTMLReportCreator(ReportCreator):
 		# Files
 		f = open(path + '/files.html', 'w')
 		self.printHeader(f)
-		f.write('<h1>Files</h1>')
+		f.write('<h1>%s - %s</h1>' % (TITLES['FILES'] , data.projectname))
 		self.printNav(f)
 
 		f.write('<dl>\n')
@@ -1122,7 +1146,7 @@ class HTMLReportCreator(ReportCreator):
 		# Lines
 		f = open(path + '/lines.html', 'w')
 		self.printHeader(f)
-		f.write('<h1>Lines</h1>')
+		f.write('<h1>%s - %s</h1>' % (TITLES['LINES'] , data.projectname))
 		self.printNav(f)
 
 		f.write('<dl>\n')
@@ -1144,7 +1168,7 @@ class HTMLReportCreator(ReportCreator):
 		# tags.html
 		f = open(path + '/tags.html', 'w')
 		self.printHeader(f)
-		f.write('<h1>Tags</h1>')
+		f.write('<h1>%s - %s</h1>' % (TITLES['TAGS'] , data.projectname))
 		self.printNav(f)
 
 		f.write('<dl>')
@@ -1165,6 +1189,46 @@ class HTMLReportCreator(ReportCreator):
 			f.write('<tr><td>%s</td><td>%s</td><td>%d</td><td>%s</td></tr>' % (tag, data.tags[tag]['date'], data.tags[tag]['commits'], ', '.join(authorinfo)))
 		f.write('</table>')
 
+		f.write('</body></html>')
+		f.close()
+
+		# incidents.html
+		f = open(path + '/incidents.html', 'w')
+		self.printHeader(f)
+		f.write('<h1>%s - %s</h1>' % (TITLES['INCIDENTS'] , data.projectname))
+		self.printNav(f)
+
+		f.write('<dl>')
+		f.write('<dt>Total Incidents</dt><dd>%d</dd>' % len(data.incidents))
+		if len(data.incidents) > 0:
+			f.write('<dt>Incidents RATIO</dt><dd>%.2f</dd>' % (1.0 * (len(data.incidents) / data.getTotalCommits()) * 100))
+		f.write('</dl>')
+
+		f.write('<table class="incidents">')
+		f.write('<tr><th>Incidents</th></tr>')
+		for inc in data.incidents:
+			f.write('<tr><td><a href="'+conf['inc_url']+'">IN:%s</a></td></tr>' % (inc, inc))
+		f.write('</table>')
+		f.write('</body></html>')
+		f.close()
+
+		# requirements.html
+		f = open(path + '/requirements.html', 'w')
+		self.printHeader(f)
+		f.write('<h1>%s - %s</h1>' % (TITLES['REQUIREMENTS'] , data.projectname))
+		self.printNav(f)
+
+		f.write('<dl>')
+		f.write('<dt>Total Requirements</dt><dd>%d</dd>' % len(data.requirements))
+		if len(data.requirements) > 0:
+			f.write('<dt>Requirements RATIO</dt><dd>%.2f</dd>' % (1.0 * (len(data.requirements) / data.getTotalCommits()) * 100))
+		f.write('</dl>')
+
+		f.write('<table class="requirements">')
+		f.write('<tr><th>Requirements</th></tr>')
+		for req in data.requirements:
+			f.write('<tr><td><a href="'+conf['req_url']+'">RQ:%s</a></td></tr>' % (req, req))
+		f.write('</table>')
 		f.write('</body></html>')
 		f.close()
 
@@ -1390,18 +1454,7 @@ plot """
 """ % (self.title, conf['style'], getversion()))
 
 	def printNav(self, f):
-		f.write("""
-<div class="nav">
-<ul>
-<li><a href="index.html">General</a></li>
-<li><a href="activity.html">Activity</a></li>
-<li><a href="authors.html">Authors</a></li>
-<li><a href="files.html">Files</a></li>
-<li><a href="lines.html">Lines</a></li>
-<li><a href="tags.html">Tags</a></li>
-</ul>
-</div>
-""")
+		f.write('<div class="nav"><ul>%s</ul></div>'  % (''.join(map(buildlink, TITLES.keys()))))
 		
 def usage():
 	print("""
@@ -1491,4 +1544,3 @@ class GitStats:
 if __name__=='__main__':
 	g = GitStats()
 	g.run(sys.argv[1:])
-
